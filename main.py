@@ -10,7 +10,13 @@ import pandas as pd
 
 
 class CycleDetect:
-    def __init__(self, path, folders_list, n_components_list = [2, 3, 5, 10, 15, 20], image_name=None):
+    def __init__(self, path, folders_list,
+                 n_components_list = [2, 3, 5, 10, 15, 20],
+                 image_name=None, pca=True,
+                 LLE=True, SE=True, FFT=True,
+                 save_distances=True,
+                 save_embedding=True,
+                 selected_dist=None):
         """
         Initializes the CycleDetect class with a path and folders.
         :param path: global path where folders are present
@@ -21,6 +27,13 @@ class CycleDetect:
         self.folders_list = folders_list
         self.n_components_list = n_components_list
         self.image_name = image_name
+        self.use_pca = pca
+        self.use_lle = LLE
+        self.use_se = SE
+        self.use_fft = FFT
+        self.save_distances = save_distances
+        self.save_embedding = save_embedding
+        self.selected_dist = selected_dist
 
         self.out_data_list, self.image_array_list, self.case_list, self.filename_list, self.itk_image_list = self.read_images_prep()
 
@@ -51,48 +64,76 @@ class CycleDetect:
         return out_data_list, image_array_list, case_list, filename_list, itk_image_list
 
 
-    def pca_ed(self, flattened_data, plot=False):
+    def compute_euclidean_dist(self, data):
 
-       distances_list = []
+        distances = np.linalg.norm(np.diff(data, axis=0), axis=1)
+
+        return distances
+
+    def plot_distances(self, distances_dict):
+        fig, axs = plt.subplots(3, 2, figsize=(14, 10))
+        axs = axs.flatten()
+
+        for i, distances in enumerate(distances_dict[self.selected_dist]):
+            # Plot Euclidean Distance
+            axs[i].plot(distances, label=f'Components={self.n_components_list[i]}')
+            axs[i].set_title(f'Euclidean Distance (Components={self.n_components_list[i]})')
+            axs[i].set_xlabel('Frame Number')
+            axs[i].set_ylabel('Euclidean Distance')
+            axs[i].legend()
+            axs[i].grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    def embed_ed(self, flattened_data, plot=False):
+
+       embedding_dict = {
+            'PCA': [],
+            'LLE': [],
+            'SE': [],
+            'FFT': []
+       }
+
+       distances_dict = {
+            'PCA_dist': [],
+            'LLE_dist': [],
+            'SE_dist': [],
+            'FFT_dist': []
+       }
+
        for n_components in self.n_components_list:
+           if self.use_pca:
+               pca = PCA(n_components=n_components)
+               pca_result = pca.fit_transform(flattened_data)
+               distances_pca = self.compute_euclidean_dist(pca_result)
+               embedding_dict['PCA'].append(pca_result)
+               distances_dict['PCA_dist'].append(distances_pca)
 
-           # TODO - ADD in technique to use
-           # TODO - to github
-           # TODO - save to separate csv
-           # TODO - modify returns
-           # PCA
-           pca = PCA(n_components=n_components)
-           pca_result = pca.fit_transform(flattened_data)
+           if self.use_lle:
+               lle = LocallyLinearEmbedding(n_neighbors=10, n_components=n_components)
+               lle_result = lle.fit_transform(flattened_data)
+               lle_distances = self.compute_euclidean_dist(lle_result)
+               embedding_dict['LLE'].append(lle_result)
+               distances_dict['LLE_dist'].append(lle_distances)
 
-           # LLE
-           lle = LocallyLinearEmbedding(n_neighbors=10, n_components=2)
-           lle_result = lle.fit_transform(flattened_data)
-
-           # Spectral embedding
+           if self.use_se:
+               se = SpectralEmbedding(n_components=n_components)
+               se_result = se.fit_transform(flattened_data)
+               se_distances = self.compute_euclidean_dist(se_result)
+               embedding_dict['SE'].append(se_result)
+               distances_dict['SE_dist'].append(se_distances)
 
            # FFT
-
-
-           distances = np.linalg.norm(np.diff(pca_result, axis=0), axis=1)
-           distances_list.append(distances)
+           if self.use_fft:
+               fft = None
+               # TODO
 
        if plot:
-            fig, axs = plt.subplots(3, 2, figsize=(14, 10))
-            axs = axs.flatten()
+           self.plot_distances(distances_dict)
 
-            for i, distances in enumerate(distances_list):
-                # Plot Euclidean Distance
-                axs[i].plot(distances, label=f'Components={self.n_components_list[i]}')
-                axs[i].set_title(f'Euclidean Distance (Components={self.n_components_list[i]})')
-                axs[i].set_xlabel('Frame Number')
-                axs[i].set_ylabel('Euclidean Distance')
-                axs[i].legend()
-                axs[i].grid(True)
+       return distances_dict, embedding_dict
 
-            plt.tight_layout()
-            plt.show()
-
-       return distances_list
 
     def find_best_component(self, distances_list):
 
@@ -245,6 +286,17 @@ class CycleDetect:
         sitk.WriteImage(image_ev, os.path.join(path, filename.split('.')[0]+'-ev.nii.gz'))
         sitk.WriteImage(image_odd, os.path.join(path, filename.split('.')[0]+'-odd.nii.gz'))
 
+    def filter_dict(self, best_dict):
+        best_dict_filtered = {}
+        for key, val in best_dict.items():
+            if isinstance(val, list):
+                best_dict_filtered[key] = [i for i in val if i is not None]
+            else:
+                if val is not None:
+                    best_dict_filtered[key] = val
+
+        return best_dict_filtered
+
     def run_all(self):
         df = pd.DataFrame()
         for ind_case, case in enumerate(self.out_data_list):
@@ -252,28 +304,40 @@ class CycleDetect:
             print("---------------------------------------------------------------")
             print(" Case  = {}, filename = {}".format(self.case_list[ind_case], self.filename_list[ind_case]))
             print("---------------------------------------------------------------")
-            distances_list = self.pca_ed(image, plot=True) # List of len n-components, length of sublists=n_frames
-            best_dict = self.find_best_component(distances_list)
-            # Get rid of Nones in dict
-            best_dict_filtered = {}
-            for key, val in best_dict.items():
-                if isinstance(val, list):
-                    best_dict_filtered[key] = [i for i in val if i is not None]
-                else:
-                    if val is not None:
-                        best_dict_filtered[key] = val
+            distances_dict, embedding_dict = self.embed_ed(image, plot=True)
 
-            if bool(best_dict_filtered)==True:
-                best_four_valleys = self.find_best_valleys(best_dict_filtered, plot=True)
+            # Save distances and embedding to csv
+            if self.save_distances:
+                pd.DataFrame.from_dict(data=distances_dict,
+                                       orient='index').to_csv(os.path.join(self.path,
+                                                                           self.case_list[ind_case],
+                                                                           'dist-'+self.filename_list[ind_case].split('.')[0]),
+                                                                                   header=False)
 
-                if best_four_valleys is not None and len(best_four_valleys) > 0:
-                    self.display_frames(best_four_valleys, self.image_array_list[ind_case],
-                                        self.filename_list[ind_case] + ' Image ' + self.case_list[ind_case].split('.')[0], fontsize=20)
-                    self.save_frames(best_four_valleys, self.image_array_list[ind_case],
-                                     os.path.join(self.path, self.case_list[ind_case]),
-                                     self.filename_list[ind_case], self.itk_image_list[ind_case])
-                    df = self.append_to_csv(df, best_four_valleys, self.case_list[ind_case].split('.')[0],
-                                       self.filename_list[ind_case].split('.')[0])
+
+            if self.save_embedding:
+                pd.DataFrame.from_dict(data=embedding_dict,
+                                       orient='index').to_csv(os.path.join(self.path,
+                                                                           self.case_list[ind_case],
+                                                                           'embed-'+self.filename_list[ind_case].split('.')[0]),
+                                                                                   header=False)
+
+            if self.selected_dist is not None:
+                best_dict = self.find_best_component(distances_dict[self.selected_dist])
+                # Get rid of Nones in dict
+                best_dict_filtered = self.filter_dict(best_dict)
+
+                if bool(best_dict_filtered)==True:
+                    best_four_valleys = self.find_best_valleys(best_dict_filtered, plot=True)
+
+                    if best_four_valleys is not None and len(best_four_valleys) > 0:
+                        self.display_frames(best_four_valleys, self.image_array_list[ind_case],
+                                            self.filename_list[ind_case] + ' Image ' + self.case_list[ind_case].split('.')[0], fontsize=20)
+                        self.save_frames(best_four_valleys, self.image_array_list[ind_case],
+                                         os.path.join(self.path, self.case_list[ind_case]),
+                                         self.filename_list[ind_case], self.itk_image_list[ind_case])
+                        df = self.append_to_csv(df, best_four_valleys, self.case_list[ind_case].split('.')[0],
+                                           self.filename_list[ind_case].split('.')[0])
 
         df.to_csv(os.path.join(path, 'predicted_frames.csv'))
 
