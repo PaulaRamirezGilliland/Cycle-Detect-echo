@@ -15,7 +15,6 @@ class CycleDetect:
                  image_name=None, pca=True,
                  LLE=True, SE=True, FFT=True,
                  save_distances=True,
-                 save_embedding=True,
                  selected_dist=None):
         """
         Initializes the CycleDetect class with a path and folders.
@@ -32,7 +31,6 @@ class CycleDetect:
         self.use_se = SE
         self.use_fft = FFT
         self.save_distances = save_distances
-        self.save_embedding = save_embedding
         self.selected_dist = selected_dist
 
         self.out_data_list, self.image_array_list, self.case_list, self.filename_list, self.itk_image_list = self.read_images_prep()
@@ -92,14 +90,12 @@ class CycleDetect:
             'PCA': [],
             'LLE': [],
             'SE': [],
-            'FFT': []
        }
 
        distances_dict = {
             'PCA_dist': [],
             'LLE_dist': [],
             'SE_dist': [],
-            'FFT_dist': []
        }
 
        for n_components in self.n_components_list:
@@ -286,6 +282,25 @@ class CycleDetect:
         sitk.WriteImage(image_ev, os.path.join(path, filename.split('.')[0]+'-ev.nii.gz'))
         sitk.WriteImage(image_odd, os.path.join(path, filename.split('.')[0]+'-odd.nii.gz'))
 
+    def convert_dict_df(self, embedding_dict, distances_dict, filename):
+
+        for embedding_type in embedding_dict.keys():
+            df = pd.DataFrame()
+            for i in range(len(embedding_dict[embedding_type])):
+                for dim in range(embedding_dict[embedding_type][i].shape[-1]):
+                    df["N_comp_" + str(self.n_components_list[i]) + '_dim_' + str(dim)] = embedding_dict[embedding_type][i][:, dim]
+            df.to_csv(os.path.join(path, filename + embedding_type + '.csv'))
+
+
+        # Save distances to CSV
+        for embedding_type in distances_dict.keys():
+            df = pd.DataFrame()
+            for i in range(len(distances_dict[embedding_type])):
+                df["N_comp_" + str(self.n_components_list[i]) ] = distances_dict[embedding_type][i]
+            df.to_csv(os.path.join(path, filename + embedding_type + '.csv'))
+
+        return 0
+
     def filter_dict(self, best_dict):
         best_dict_filtered = {}
         for key, val in best_dict.items():
@@ -308,19 +323,8 @@ class CycleDetect:
 
             # Save distances and embedding to csv
             if self.save_distances:
-                pd.DataFrame.from_dict(data=distances_dict,
-                                       orient='index').to_csv(os.path.join(self.path,
-                                                                           self.case_list[ind_case],
-                                                                           'dist-'+self.filename_list[ind_case].split('.')[0]),
-                                                                                   header=False)
-
-
-            if self.save_embedding:
-                pd.DataFrame.from_dict(data=embedding_dict,
-                                       orient='index').to_csv(os.path.join(self.path,
-                                                                           self.case_list[ind_case],
-                                                                           'embed-'+self.filename_list[ind_case].split('.')[0]),
-                                                                                   header=False)
+                self.convert_dict_df(embedding_dict, distances_dict, filename=os.path.join(self.path,self.case_list[ind_case],
+                                                       self.filename_list[ind_case].split('.')[0]+'-'))
 
             if self.selected_dist is not None:
                 best_dict = self.find_best_component(distances_dict[self.selected_dist])
@@ -339,7 +343,8 @@ class CycleDetect:
                         df = self.append_to_csv(df, best_four_valleys, self.case_list[ind_case].split('.')[0],
                                            self.filename_list[ind_case].split('.')[0])
 
-        df.to_csv(os.path.join(path, 'predicted_frames.csv'))
+        if self.selected_dist is not None:
+            df.to_csv(os.path.join(path, 'predicted_frames.csv'))
 
 
 if __name__ == '__main__':
