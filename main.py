@@ -129,7 +129,7 @@ class CycleDetect:
                fft = None
                # TODO
 
-       if plot:
+       if plot and self.selected_dist:
            self.plot_distances(distances_dict)
 
        return distances_dict, embedding_dict
