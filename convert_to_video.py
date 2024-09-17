@@ -2,6 +2,12 @@ import SimpleITK as sitk
 import cv2
 import numpy as np
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+path = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\iFIND00226_10Mar2017\\"
+filename = "crop-heart-IM_0084-res"
 
 
 def nifti_to_video(input_nifti_path, output_video_path, fps=30):
@@ -37,7 +43,7 @@ def nifti_to_video(input_nifti_path, output_video_path, fps=30):
     print(f"Video saved at {output_video_path}")
 
 
-PATH = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\iFIND00226_10Mar2017\\"
-input_nifti_path = os.path.join(PATH, 'crop-heart-IM_0084-res.nii.gz')  # Path to your input NIfTI file
-output_video_path = os.path.join(PATH, 'vid_IM_0084.mp4')  # Output video path
+PATH = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\iFIND00270_30Jun2017\\"
+input_nifti_path = os.path.join(PATH, 'crop-heart-IM_0315-res.nii.gz')  # Path to your input NIfTI file
+output_video_path = os.path.join(PATH, 'vid_IM_0315.mp4')  # Output video path
 nifti_to_video(input_nifti_path, output_video_path, fps=15)

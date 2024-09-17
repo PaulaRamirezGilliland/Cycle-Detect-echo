@@ -7,17 +7,20 @@ from scipy.signal import find_peaks
 from sklearn.decomposition import PCA
 from sklearn.manifold import LocallyLinearEmbedding, SpectralEmbedding
 import pandas as pd
+from pydmd import DMD
+from pydmd.plotter import plot_eigs, plot_summary
+
 
 
 class CycleDetect:
     def __init__(self, path, folders_list,
                  n_components_list = [2, 3, 5, 10, 15, 20],
                  image_name=None, pca=True,
-                 LLE=True, SE=True, FFT=True,
+                 LLE=True, SE=True, FFT=True, DMD=True,
                  save_distances=True,
                  selected_dist=None):
         """
-        Initializes the CycleDetect class with a path and folders.
+        Initializes the CycleDetect class with a path and .
         :param path: global path where folders are present
         :param folders_list: list of iFIND folders (cases) with 2D images
         :param n_components_list: list of integers containing number of components to test for
@@ -30,6 +33,7 @@ class CycleDetect:
         self.use_lle = LLE
         self.use_se = SE
         self.use_fft = FFT
+        self.use_dmd = DMD
         self.save_distances = save_distances
         self.selected_dist = selected_dist
 
@@ -51,6 +55,9 @@ class CycleDetect:
                 if filename.find('-ev')==-1 and filename.find('-odd')==-1:
                     image = sitk.ReadImage(os.path.join(self.path, folder, filename))
                     image_array = sitk.GetArrayFromImage(image)
+                    image_array = (image_array - np.min(image_array)) / (
+                                np.max(image_array) - np.min(image_array))
+
                     filename_list.append(filename)
                     # Flatten the images
                     flattened_images = image_array.reshape(image_array.shape[0], -1)
@@ -90,12 +97,17 @@ class CycleDetect:
             'PCA': [],
             'LLE': [],
             'SE': [],
+            'DMD': [],
+
        }
 
        distances_dict = {
             'PCA_dist': [],
             'LLE_dist': [],
             'SE_dist': [],
+            'DMD_dist': [],
+            'DMD_recon_dist': [],
+            'img_dist': []
        }
 
        for n_components in self.n_components_list:
@@ -119,6 +131,27 @@ class CycleDetect:
                se_distances = self.compute_euclidean_dist(se_result)
                embedding_dict['SE'].append(se_result)
                distances_dict['SE_dist'].append(se_distances)
+
+           if self.use_dmd:
+               dmd = DMD(svd_rank=n_components)
+               dmd.fit(flattened_data)  # DMD expects time in columns, so transpose the data
+               plot_summary(dmd, x=np.arange(flattened_data.shape[0]), t=1, figsize=(10, 10),
+                            filename=os.path.join(self.path, f"plot_summary_{n_components}.svg"))
+
+               dmd_reconstructed = dmd.reconstructed_data.real
+               dmd_modes = dmd.modes.real
+               distances_dmd_recon = self.compute_euclidean_dist(dmd_reconstructed)
+               distances_dmd = self.compute_euclidean_dist(dmd_modes)
+               distances_img = self.compute_euclidean_dist(flattened_data)
+
+               distances_dict['DMD_recon_dist'].append(distances_dmd_recon)
+
+               embedding_dict['DMD'].append(dmd_modes)
+               distances_dict['DMD_dist'].append(distances_dmd)
+               distances_dict['img_dist'].append(distances_img)
+
+               np.save(os.path.join(path, f"recon_dmd_{n_components}.npy"), dmd_reconstructed)
+               print("Saved")
 
            # FFT
            if self.use_fft:
@@ -351,7 +384,7 @@ if __name__ == '__main__':
     path = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\"
     folders_list = ["iFIND00226_10Mar2017"]#["iFIND00207_13Jan2017", "iFIND00209_20Jan2017", "iFIND00270_30Jun2017"]
     image_list = ["crop-heart-IM_0084-res.nii.gz"]
-    cycle_detect = CycleDetect(path, folders_list, n_components_list=[2, 3, 5, 10, 15, 20], image_name=image_list)
+    cycle_detect = CycleDetect(path, folders_list, n_components_list=[2, 3, 5, 10, 15, 20], image_name=image_list, DMD=True)
     cycle_detect.run_all()
 
 
