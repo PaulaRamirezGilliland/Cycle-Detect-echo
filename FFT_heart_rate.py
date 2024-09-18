@@ -1,8 +1,10 @@
-
-import numpy as np
-import matplotlib.pyplot as plt
-import SimpleITK as sitk
 import os
+import matplotlib
+matplotlib.use('TkAgg')
+import SimpleITK as sitk
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import find_peaks
 
 # Read in Data
 path = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\"
@@ -13,20 +15,6 @@ image = sitk.ReadImage(os.path.join(path, folder, filename))
 image_array = sitk.GetArrayFromImage(image)
 image_array = (image_array - np.min(image_array)) / (
         np.max(image_array) - np.min(image_array))
-
-time, height, width = image_array.shape
-
-# Flatten the images
-flattened_data = image_array.reshape(image_array.shape[0], -1)
-"""
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
-from scipy.ndimage import gaussian_filter
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
 
 
 def calc_freq(nFrame, dt):
@@ -39,15 +27,26 @@ def calc_freq(nFrame, dt):
 def estimate_heartrate_2d_time(imSeq, frameDuration, hrRange=(110, 180)):
     nFrames, height, width = imSeq.shape
 
-    # Flatten the image sequence for FFT processing
-    xtRoi = imSeq.reshape(nFrames, -1)  # Shape: (nFrames, height * width)
+    #flattened_data = image_array.reshape(image_array.shape[0], -1)
 
-    # Perform FFT on the entire sequence
-    xfRoi = np.abs(np.fft.fft(xtRoi, axis=0))  # FFT along the time axis
-    xfMeanSig = np.mean(xfRoi, axis=1)  # Mean signal across spatial dimensions
+    # Step 1: Perform the Fourier transform along the first axis (N_frames/time axis)
+    fft_result = np.fft.fftshift(np.fft.fft(imSeq, axis=0), axes=0)
+
+    # Step 2: Take the magnitude of the Fourier transform
+    fft_magnitude = np.abs(fft_result)
+
+    # Step 3: Compute the mean over the spatial dimensions (Height, Width)
+    xfMeanSig = np.mean(fft_magnitude, axis=(1, 2))  # Mean over Height and Width
 
     # Frequency vector
     f = calc_freq(nFrames, frameDuration)
+
+    plt.figure()
+    plt.plot(f, xfMeanSig)
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Spatial Mean FFT Magnitude')
+    plt.title('Frequency Spectrum')
+    plt.show()
 
     # Define frequency range based on heart rate
     minHR = hrRange[0]
@@ -57,14 +56,21 @@ def estimate_heartrate_2d_time(imSeq, frameDuration, hrRange=(110, 180)):
 
     # Identify peaks in the frequency spectrum within the HR range
     indf0 = np.where((f >= minFreq) & (f <= maxFreq))[0]
+
     plt.figure()
     plt.subplot(1,2,1)
-    plt.plot(xfMeanSig, 'ro')
+    plt.title("Mean FFT mag")
+    plt.plot(f, xfMeanSig)
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Spatial Mean FFT Magnitude')
     plt.subplot(1,2,2)
-    plt.plot(xfMeanSig[indf0], 'ro')
+    plt.title("Mean FFT mag in expected frequency range")
+    plt.plot(f[indf0], xfMeanSig[indf0])
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Spatial Mean FFT Magnitude')
     plt.show()
 
-    peaks, properties = find_peaks(xfMeanSig[indf0], height=[0, 100])
+    peaks, properties = find_peaks(xfMeanSig[indf0], height=[0, np.max(xfMeanSig)+1])
 
     if len(peaks) == 0:
         return None, None  # No peaks found
@@ -72,50 +78,14 @@ def estimate_heartrate_2d_time(imSeq, frameDuration, hrRange=(110, 180)):
     # Get the fundamental frequency corresponding to the highest peak
     peak_idx = peaks[np.argmax(properties['peak_heights'])]
     fundamental_frequency = f[indf0[peak_idx]]
-
+    print("Fundamental frequency ", fundamental_frequency)
     # Calculate R-R interval and heart rate
     rrInterval = 1 / fundamental_frequency  # R-R interval in seconds
     heart_rate = 60 / rrInterval  # Convert to BPM
 
     return rrInterval, heart_rate
 
-rrInterval, heart_rate = estimate_heartrate_2d_time(image_array, frameDuration=17.266*10**-3)
-
+rrInterval, heart_rate = estimate_heartrate_2d_time(image_array, frameDuration=0.017266)
+print(rrInterval)
+print(heart_rate)
 print('Done')
-"""
-# Perform Fourier Transform along the time axis
-fft_result = np.abs(np.fft.fft(flattened_data, axis=0))
-xfMeanSig = np.mean(fft_result, axis=1)  # Mean signal across spatial dimensions
-# Get the frequencies
-frequencies = np.fft.fftfreq(time, 17.266*10**-3)
-
-minHR = 110
-maxHR = 180
-minFreq = minHR / 60  # Convert BPM to Hz
-maxFreq = maxHR / 60  # Convert BPM to Hz
-
-# Identify peaks in the frequency spectrum within the HR range
-indf0 = np.where((frequencies >= minFreq) & (frequencies <= maxFreq))[0]
-
-plt.figure()
-plt.title("Mean signal")
-plt.plot(xfMeanSig, 'ro')
-plt.show()
-
-plt.figure()
-plt.title("Mean signal filter")
-plt.plot(xfMeanSig[indf0], 'ro')
-plt.show()
-
-
-# Compute amplitude spectrum
-amplitude = np.abs(fft_result)
-
-# Plotting the results
-plt.figure(figsize=(12, 6))
-plt.imshow(amplitude.T, aspect='auto', extent=[frequencies.min(), frequencies.max(), 0, height * width], origin='lower')
-plt.colorbar(label='Amplitude')
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Spatial Component Index')
-plt.title('Fourier Transform Amplitude Spectrum of Fetal Heart Ultrasound Data')
-plt.show()
