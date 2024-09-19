@@ -233,6 +233,7 @@ class CycleDetect:
             if len(valleys)<2:
                 print("Only found {} valleys!".format(len(valleys)))
                 best_component = None
+                best_valleys = None
                 continue
 
             # Calculate the valley intervals and standard deviation within the window
@@ -243,8 +244,9 @@ class CycleDetect:
             if valley_std_dev < min_valley_std_dev:
                 min_valley_std_dev = valley_std_dev
                 best_component = n_components
+                best_valleys = valleys
 
-        return best_component
+        return best_component, best_valleys
 
 
 
@@ -410,12 +412,11 @@ class CycleDetect:
                                            self.filename_list[ind_case].split('.')[0])
 
             if self.selected_dist is not None and not self.find_best_4:
-                best_component = self.find_best_overall_component(distances_dict[self.selected_dist])
+                best_component, best_valleys = self.find_best_overall_component(distances_dict[self.selected_dist])
                 ind_best_component = [index for index, value in enumerate(self.n_components_list) if value == best_component][0]
                 print(f"Best component = {best_component}, index = {ind_best_component}")
-                # Return all the valleys for selected component
-                valleys_component = distances_dict[self.selected_dist][ind_best_component]
-                self.save_frames(valleys_component, self.image_array_list[ind_case],
+
+                self.save_frames(best_valleys, self.image_array_list[ind_case],
                          os.path.join(self.path, self.case_list[ind_case]),
                          self.filename_list[ind_case], self.itk_image_list[ind_case])
 
