@@ -18,7 +18,8 @@ class CycleDetect:
                  image_name=None, pca=True,
                  LLE=True, SE=True, FFT=True, DMD=True,
                  save_distances=True,
-                 selected_dist=None):
+                 selected_dist=None,
+                 find_best_4 = False):
         """
         Initializes the CycleDetect class with a path and .
         :param path: global path where folders are present
@@ -36,6 +37,7 @@ class CycleDetect:
         self.use_dmd = DMD
         self.save_distances = save_distances
         self.selected_dist = selected_dist
+        self.find_best_4 = find_best_4
 
         self.out_data_list, self.image_array_list, self.case_list, self.filename_list, self.itk_image_list = self.read_images_prep()
 
@@ -55,6 +57,7 @@ class CycleDetect:
                 if filename.find('-ev')==-1 and filename.find('-odd')==-1:
                     image = sitk.ReadImage(os.path.join(self.path, folder, filename))
                     image_array = sitk.GetArrayFromImage(image)
+                    image_array = image_array#[0:47] #  [22:47]
                     image_array = (image_array - np.min(image_array)) / (
                                 np.max(image_array) - np.min(image_array))
 
@@ -135,8 +138,8 @@ class CycleDetect:
            if self.use_dmd:
                dmd = DMD(svd_rank=n_components)
                dmd.fit(flattened_data)  # DMD expects time in columns, so transpose the data
-               plot_summary(dmd, x=np.arange(flattened_data.shape[0]), t=1, figsize=(10, 10),
-                            filename=os.path.join(self.path, f"plot_summary_{n_components}.svg"))
+               #plot_summary(dmd, x=np.arange(flattened_data.shape[0]), t=1, figsize=(10, 10),
+               #             filename=os.path.join(self.path, f"plot_summary_{n_components}.svg"))
 
                dmd_reconstructed = dmd.reconstructed_data.real
                dmd_modes = dmd.modes.real
@@ -150,8 +153,8 @@ class CycleDetect:
                distances_dict['DMD_dist'].append(distances_dmd)
                distances_dict['img_dist'].append(distances_img)
 
-               np.save(os.path.join(path, f"recon_dmd_{n_components}.npy"), dmd_reconstructed)
-               print("Saved")
+               #np.save(os.path.join(path, f"recon_dmd_{n_components}.npy"), dmd_reconstructed)
+               #print("Saved")
 
            # FFT
            if self.use_fft:
@@ -171,7 +174,7 @@ class CycleDetect:
         # Loop through the number of components, and the list of distances for each component
         for n_components, distances in zip(self.n_components_list, distances_list):
             # Find valleys for that particular component
-            valleys, _ = find_peaks(-distances, prominence=2, distance=5)
+            valleys, _ = find_peaks(-distances, prominence=0.5 * np.max(distances))
             if len(valleys)<2:
                 print("Only found {} valleys!".format(len(valleys)))
                 best_start = None
@@ -217,6 +220,34 @@ class CycleDetect:
         best_dict["best_combined_std_dev"] = best_combined_std_dev
 
         return best_dict
+
+
+    def find_best_overall_component(self, distances_list):
+
+        min_valley_std_dev = float('inf')
+
+        # Loop through the number of components, and the list of distances for each component
+        for n_components, distances in zip(self.n_components_list, distances_list):
+            # Find valleys for that particular component
+            valleys, _ = find_peaks(-distances, prominence=0.5 * np.max(distances))
+            if len(valleys)<2:
+                print("Only found {} valleys!".format(len(valleys)))
+                best_component = None
+                continue
+
+            # Calculate the valley intervals and standard deviation within the window
+            valley_diff = np.diff(valleys)
+            valley_std_dev = np.std(valley_diff)
+
+            # Find the minimal standard deviation
+            if valley_std_dev < min_valley_std_dev:
+                min_valley_std_dev = valley_std_dev
+                best_component = n_components
+
+        return best_component
+
+
+
 
 
     def find_best_valleys(self, best_dict, plot=False):
@@ -359,7 +390,9 @@ class CycleDetect:
                 self.convert_dict_df(embedding_dict, distances_dict, filename=os.path.join(self.path,self.case_list[ind_case],
                                                        self.filename_list[ind_case].split('.')[0]+'-'))
 
-            if self.selected_dist is not None:
+
+            # Nuo's method - find best 4 valleys
+            if self.find_best_4:
                 best_dict = self.find_best_component(distances_dict[self.selected_dist])
                 # Get rid of Nones in dict
                 best_dict_filtered = self.filter_dict(best_dict)
@@ -376,6 +409,16 @@ class CycleDetect:
                         df = self.append_to_csv(df, best_four_valleys, self.case_list[ind_case].split('.')[0],
                                            self.filename_list[ind_case].split('.')[0])
 
+            if self.selected_dist is not None and not self.find_best_4:
+                best_component = self.find_best_overall_component(distances_dict[self.selected_dist])
+                ind_best_component = [index for index, value in enumerate(self.n_components_list) if value == best_component][0]
+                print(f"Best component = {best_component}, index = {ind_best_component}")
+                # Return all the valleys for selected component
+                valleys_component = distances_dict[self.selected_dist][ind_best_component]
+                self.save_frames(valleys_component, self.image_array_list[ind_case],
+                         os.path.join(self.path, self.case_list[ind_case]),
+                         self.filename_list[ind_case], self.itk_image_list[ind_case])
+
         if self.selected_dist is not None:
             df.to_csv(os.path.join(path, 'predicted_frames.csv'))
 
@@ -384,7 +427,9 @@ if __name__ == '__main__':
     path = "C:\\Users\\prg20local\\OneDrive - King's College London\\Research Project\\PhD\\US_recon\\Data\\2D_echo\\current_training_data\\cropped-files-heart\\"
     folders_list = ["iFIND00226_10Mar2017"]#["iFIND00207_13Jan2017", "iFIND00209_20Jan2017", "iFIND00270_30Jun2017"]
     image_list = ["crop-heart-IM_0084-res.nii.gz"]
-    cycle_detect = CycleDetect(path, folders_list, n_components_list=[2, 3, 5, 10, 15, 20], image_name=image_list, DMD=True)
+    cycle_detect = CycleDetect(path, folders_list, n_components_list=[2, 3, 5, 10, 15, 20],
+                               image_name=image_list, DMD=True,
+                               save_distances=False, selected_dist='DMD_dist')
     cycle_detect.run_all()
 
 

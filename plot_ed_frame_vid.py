@@ -13,10 +13,10 @@ embedding = "DMD"
 comp = 20
 
 # Load the data
-df = pd.read_csv(os.path.join(path, 'embedding_scaling', filename + '-' + embedding + '_dist.csv'))
+df = pd.read_csv(os.path.join(path, 'single_cycle1', filename + '-' + embedding + '_dist.csv'))
 x = df[f'N_comp_{comp}']
 
-df_embed = pd.read_csv(os.path.join(path, 'embedding_scaling', filename + '-' + embedding + '.csv'))
+df_embed = pd.read_csv(os.path.join(path, 'single_cycle1', filename + '-' + embedding + '.csv'))
 x_mode0 = df_embed[f'N_comp_{comp}_dim_0']
 x_mode1 = df_embed[f'N_comp_{comp}_dim_1']
 x_mode2 = df_embed[f'N_comp_{comp}_dim_2']

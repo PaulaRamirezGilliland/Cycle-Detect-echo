@@ -11,6 +11,10 @@ embedding = ["PCA", "SE", "LLE", "DMD", "DMD_recon", "img"]
 
 n_comp = [2, 3, 5, 10, 15, 20]
 
+ED = [0, 22, 45, 70, 95, 116, 142]
+ES = [10, 34, 58, 84, 106, 130, 154]
+
+
 
 plt.figure(figsize=(20, 20)) # (15, 20)
 ind_plot=1
@@ -29,12 +33,23 @@ for i, comp in enumerate(n_comp):
 
         # Create a scatter plot
         plt.plot(frame_number, x, 'g-', linewidth=0.4)
+        plt.plot(ED, np.zeros(len(ED)), 'b*', label='ED')
+        plt.plot(ES, np.zeros(len(ES)), 'r*', label='ES', linewidth=0.05)
+
+        for x in ED:
+            plt.axvline(x=x, color='blue', linestyle='--', alpha=0.5, linewidth=0.5)
+
+        # Plot vertical lines for ES points
+        for x in ES:
+            plt.axvline(x=x, color='red', linestyle='--', alpha=0.5, linewidth=0.5)
+
         plt.xlabel('Frame number')
         plt.ylabel('ED')
+        plt.legend()
         ind_plot += 1
 
 plt.tight_layout()
-plt.savefig(os.path.join(path, "plots",  "ED_all_embed.svg"),format='svg', transparent=True)
+plt.savefig(os.path.join(path, "plots",  "ED_all_embed_seq.svg"),format='svg', transparent=True)
 plt.show()
 """
 
